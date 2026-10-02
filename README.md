@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Secure File Share Link
 
-## Getting Started
+A secure file-sharing web app: upload a file, get a short shareable link (`/f/<token>`), optionally protect it with a password and set an expiry time. Links expire automatically; expired files are cleaned up by a cron route. Built with **Next.js 15 (App Router)**, **better-auth**, and **Turso (libSQL)** via Drizzle ORM.
 
-First, run the development server:
+> Originally scaffolded from an Orchids.app project; refactored into this repo.
+
+## Features
+
+- **Upload & share** — drop a file, receive a short token link instantly
+- **Password protection** — optional per-file password, hashed with bcrypt
+- **Expiring links** — configurable expiry (default 5 minutes); expired files auto-cleaned
+- **Auth** — email + password sign-up/login via better-auth (register, login pages)
+- **File pages** — `/f/[token]` renders a download page per share link
+- **Cleanup cron** — `/api/cron/cleanup` route deletes expired records/files
+- **Rate-friendly UI** — shadcn/ui components, Tailwind CSS, Lucide icons
+
+## Tech Stack
+
+- **Next.js 15** (App Router, server components + API routes)
+- **better-auth** — email/password auth with drizzle adapter
+- **Drizzle ORM** + **@libsql/client** — Turso-hosted SQLite database
+- **bcryptjs** — password hashing
+- **shadcn/ui** (Radix primitives), **Tailwind CSS**
+- **nanoid** — share tokens
+
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+
+# 1. Copy .env.example values into .env:
+#    TURSO_CONNECTION_URL=libsql://<db>.turso.io
+#    TURSO_AUTH_TOKEN=<token>
+#    BETTER_AUTH_SECRET=<random-32+chars>
+
+npm run dev       # http://localhost:3000
+npm run build
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires **Node 20+**. Apply migrations first if the DB is fresh: `npx drizzle-kit push` (see `drizzle/` + `drizzle.config.ts`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+  app/
+    page.tsx                 # landing / upload UI
+    f/[token]/page.tsx       # share-link download page
+    login/ register/         # auth pages
+    api/
+      upload/route.ts        # POST multipart upload -> token link
+      download/[token]/route.ts  # GET file stream
+      auth/[...all]/route.ts # better-auth handler
+      cleanup/route.ts       # manual cleanup trigger
+      cron/cleanup/route.ts  # scheduled expiry cleanup
+  db/
+    index.ts                 # libsql client + drizzle instance
+    schema.ts                # files, user, session, account, verification tables
+  lib/
+    auth.ts                  # better-auth config (drizzle adapter, bearer plugin)
+    auth-client.ts           # client-side auth helpers
+    cleanup.ts               # expiry sweep logic
+    utils.ts                 # cn() etc.
+  components/ui/             # shadcn/ui primitives
+  hooks/use-mobile.ts
+drizzle/                     # generated migrations
+drizzle.config.ts
+middleware.ts
+```
 
-## Learn More
+## Env Vars
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Purpose |
+|---|---|
+| `TURSO_CONNECTION_URL` | libSQL connection URL (e.g. `libsql://….turso.io`) |
+| `TURSO_AUTH_TOKEN` | Turso auth token |
+| `BETTER_AUTH_SECRET` | better-auth session secret (32+ random chars) |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+All three are required; the app cannot run without a database.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy Notes
 
-## Deploy on Vercel
+- Deploys to **Netlify** (Next.js runtime); set the three env vars above in the site settings.
+- ⚠️ **Storage caveat:** uploaded files are written to `<cwd>/uploads`, which is **ephemeral** on serverless hosts (Netlify functions). Upload and download usually work within the same warm function instance, but files are not durable — for production, swap `uploads/` for object storage (S3/R2) in `src/app/api/upload/route.ts`.
+- Scheduled cleanup: wire `/api/cron/cleanup` to a scheduled function or external cron hit.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Credits
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by **Girish Lade** — https://ladestack.in
